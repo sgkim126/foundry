@@ -19,9 +19,9 @@ use ckey::Ed25519Public as Public;
 use coordinator::TxOrigin;
 use ctypes::{BlockNumber, TxHash};
 use std::cmp::Ordering;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
-/// Point in time when transaction was inserted.
+/// Point in time when transaction was inserted
 pub type PoolingInstant = BlockNumber;
 
 #[derive(Clone, Copy, Debug)]
@@ -117,32 +117,31 @@ impl MemPoolItem {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct CurrentQueue {
-    /// Priority queue for transactions
-    pub queue: BTreeSet<TransactionOrder>,
-    /// Memory usage of the external transactions in the queue
+pub struct TransactionPool {
+    pub pool: HashMap<TxHash, TransactionOrder>,
+    /// Memory usage of the transactions in the queue
     pub mem_usage: usize,
     /// Count of the external transactions in the queue
     pub count: usize,
 }
 
-impl CurrentQueue {
+impl TransactionPool {
     pub fn new() -> Self {
         Self {
-            queue: BTreeSet::new(),
+            pool: Default::default(),
             mem_usage: 0,
             count: 0,
         }
     }
 
     pub fn clear(&mut self) {
-        self.queue.clear();
+        self.pool.clear();
         self.mem_usage = 0;
         self.count = 0;
     }
 
     pub fn len(&self) -> usize {
-        self.queue.len()
+        self.pool.len()
     }
 
     pub fn insert(&mut self, order: TransactionOrder) {
@@ -151,6 +150,9 @@ impl CurrentQueue {
             self.mem_usage += order.mem_usage;
             self.count += 1;
         }
+    }
+    pub fn contains(&self, hash: &TxHash) -> bool {
+        self.pool.contains_key(hash)
     }
 
     pub fn remove(&mut self, order: &TransactionOrder) {
