@@ -14,8 +14,6 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-mod hit;
-
 use super::TopStateView;
 use crate::{StateResult, TopLevelState};
 use ccrypto::blake256;
@@ -91,8 +89,6 @@ impl ActionDataKeyBuilder {
         blake256(self.rlp.as_raw())
     }
 }
-
-pub use self::hit::HitHandler;
 
 #[cfg(test)]
 mod tests {
