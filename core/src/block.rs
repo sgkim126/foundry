@@ -215,13 +215,6 @@ impl<'x> OpenBlock<'x> {
             warn!("Encountered error on closing the block: {}", e);
             return Err(e)
         }
-        let header = self.block.header().clone();
-        for handler in self.engine.action_handlers() {
-            handler.on_close_block(self.block.state_mut(), &header).map_err(|e| {
-                warn!("Encountered error in {}::on_close_block", handler.name());
-                e
-            })?;
-        }
         let state_root = self.block.state.commit().map_err(|e| {
             warn!("Encountered error on state commit: {}", e);
             e

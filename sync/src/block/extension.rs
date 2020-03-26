@@ -932,9 +932,8 @@ impl Extension {
                     for tx in body {
                         let is_valid = match &tx.transaction().action {
                             Action::Custom {
-                                handler_id,
                                 ..
-                            } => self.client.find_action_handler_for(*handler_id).is_some(),
+                            } => self.client.find_action_handler_for().is_some(),
                             _ => true,
                         };
                         if !is_valid {

@@ -66,15 +66,12 @@ where
 
     fn get_custom_action_data(
         &self,
-        handler_id: u64,
+        _handler_id: u64,
         key_fragment: Bytes,
         block_number: Option<u64>,
     ) -> Result<Option<WithoutPrefix<Bytes>>> {
-        let handler = self.client.find_action_handler_for(handler_id).ok_or_else(|| {
-            errors::invalid_custom_action(format!(
-                "Current consensus engine doesn't have an action handler for a given handler_id({})",
-                handler_id
-            ))
+        let handler = self.client.find_action_handler_for().ok_or_else(|| {
+            errors::invalid_custom_action("Current consensus engine doesn't have an action handler".to_string())
         })?;
         let block_id = block_number.map(BlockId::Number).unwrap_or(BlockId::Latest);
         let state = self.client.state_at(block_id).ok_or_else(errors::state_not_exist)?;

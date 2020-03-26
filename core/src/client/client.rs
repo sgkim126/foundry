@@ -706,8 +706,8 @@ impl MiningBlockChainClient for Client {
 }
 
 impl FindActionHandler for Client {
-    fn find_action_handler_for(&self, id: u64) -> Option<&dyn ActionHandler> {
-        self.engine.find_action_handler_for(id)
+    fn find_action_handler_for(&self) -> Option<&dyn ActionHandler> {
+        self.engine.find_action_handler_for()
     }
 }
 

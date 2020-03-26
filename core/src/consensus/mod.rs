@@ -233,12 +233,8 @@ pub trait ConsensusEngine: Sync + Send {
         true
     }
 
-    fn action_handlers(&self) -> &[Arc<dyn ActionHandler>] {
-        &[]
-    }
-
-    fn find_action_handler_for(&self, id: u64) -> Option<&dyn ActionHandler> {
-        self.action_handlers().iter().find(|handler| handler.handler_id() == id).map(AsRef::as_ref)
+    fn find_action_handler_for(&self) -> Option<&dyn ActionHandler> {
+        None
     }
 
     fn possible_authors(&self, block_number: Option<u64>) -> Result<Option<Vec<Address>>, EngineError>;
@@ -327,13 +323,13 @@ pub trait CodeChainEngine: ConsensusEngine {
         common_params: &CommonParams,
     ) -> Result<(), Error> {
         if let Action::Custom {
-            handler_id,
             bytes,
+            ..
         } = &tx.transaction().action
         {
             let handler = self
-                .find_action_handler_for(*handler_id)
-                .ok_or_else(|| SyntaxError::InvalidCustomAction(format!("{} is an invalid handler id", handler_id)))?;
+                .find_action_handler_for()
+                .ok_or_else(|| SyntaxError::InvalidCustomAction("no valid handler".to_string()))?;
             handler.verify(bytes, common_params)?;
         }
         self.machine().verify_transaction_with_params(tx, common_params)

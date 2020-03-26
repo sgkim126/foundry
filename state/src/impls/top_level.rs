@@ -364,10 +364,10 @@ impl TopLevelState {
                 return Ok(())
             }
             Action::Custom {
-                handler_id,
                 bytes,
+                ..
             } => {
-                let handler = client.find_action_handler_for(*handler_id).expect("Unknown custom parsel applied!");
+                let handler = client.find_action_handler_for().expect("Unknown custom parsel applied!");
                 handler.execute(bytes, self, sender_address, sender_public)?;
                 return Ok(())
             }
