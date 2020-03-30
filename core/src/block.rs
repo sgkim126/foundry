@@ -237,6 +237,17 @@ impl OpenBlock {
             &skewed_merkle_root(BLAKE_NULL_RLP, self.block.transactions.iter().map(Encodable::rlp_bytes),)
         );
 
+        if self.block.header.evidences_root() == &BLAKE_NULL_RLP {
+            self.block.header.set_evidences_root(skewed_merkle_root(
+                BLAKE_NULL_RLP,
+                self.block.evidences.iter().map(Encodable::rlp_bytes),
+            ));
+        }
+        debug_assert_eq!(
+            self.block.header.evidences_root(),
+            &skewed_merkle_root(BLAKE_NULL_RLP, self.block.evidences.iter().map(Encodable::rlp_bytes),)
+        );
+
         Ok(ClosedBlock {
             block: self.block,
         })
