@@ -24,6 +24,7 @@ pub fn create_test_block(header: &Header) -> Bytes {
     rlp.append(header);
     rlp.append_raw(&rlp::EMPTY_LIST_RLP, 1); // evidences
     rlp.append_raw(&rlp::EMPTY_LIST_RLP, 1);
+    rlp.append_raw(&rlp::EMPTY_LIST_RLP, 1);
     rlp.out()
 }
 
