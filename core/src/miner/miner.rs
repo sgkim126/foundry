@@ -264,9 +264,9 @@ impl Miner {
             // NOTE: This lock should be acquired after `prepare_open_block` to prevent deadlock
             let mem_pool = self.mem_pool.read();
             let transactions = mem_pool.all_pending_transactions_with_metadata();
-            open_block.prepare_block_from_transactions(block_executor, transactions);
+            open_block.prepare_block_from_transactions(&*self.block_executor, transactions);
         }
-        let closed_block = open_block.close(block_executor)?;
+        let closed_block = open_block.close(&*self.block_executor)?;
         Ok(Some(closed_block))
     }
 
