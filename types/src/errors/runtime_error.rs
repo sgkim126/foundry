@@ -16,7 +16,7 @@
 
 use super::TaggedRlp;
 use crate::util::unexpected::Mismatch;
-use crate::{ShardId, StorageId};
+use crate::{BlockNumber, ShardId, StorageId};
 use ckey::Address;
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::fmt::{Display, Formatter, Result as FormatResult};
@@ -50,6 +50,8 @@ pub enum Error {
         idx: usize,
         parent_height: u64,
     },
+    InvalidValidators,
+    InvalidBlockNumber(Mismatch<BlockNumber>),
 }
 
 #[derive(Clone, Copy)]
@@ -67,6 +69,8 @@ enum ErrorID {
     SignatureOfInvalid = 10,
     InsufficientStakes = 11,
     InvalidValidatorIndex = 12,
+    InvalidValidators = 13,
+    InvalidBlockNumber = 14,
 }
 
 impl Encodable for ErrorID {
@@ -90,6 +94,8 @@ impl Decodable for ErrorID {
             9 => Ok(ErrorID::SignatureOfInvalid),
             10 => Ok(ErrorID::InsufficientStakes),
             11 => Ok(ErrorID::InvalidValidatorIndex),
+            13 => Ok(ErrorID::InvalidValidators),
+            14 => Ok(ErrorID::InvalidBlockNumber),
             _ => Err(DecoderError::Custom("Unexpected ActionTag Value")),
         }
     }
@@ -113,6 +119,8 @@ impl TaggedRlp for RlpHelper {
             ErrorID::SignatureOfInvalid => 2,
             ErrorID::InsufficientStakes => 3,
             ErrorID::InvalidValidatorIndex => 3,
+            ErrorID::InvalidValidators => 1,
+            ErrorID::InvalidBlockNumber => 3,
         })
     }
 }
@@ -153,6 +161,11 @@ impl Encodable for Error {
                 idx,
                 parent_height,
             } => RlpHelper::new_tagged_list(s, ErrorID::InvalidValidatorIndex).append(idx).append(parent_height),
+            Error::InvalidValidators => RlpHelper::new_tagged_list(s, ErrorID::InvalidValidators),
+            Error::InvalidBlockNumber(Mismatch {
+                expected,
+                found,
+            }) => RlpHelper::new_tagged_list(s, ErrorID::InvalidBlockNumber).append(expected).append(found),
         };
     }
 }
@@ -186,6 +199,11 @@ impl Decodable for Error {
                 idx: rlp.val_at(1)?,
                 parent_height: rlp.val_at(2)?,
             },
+            ErrorID::InvalidValidators => Error::InvalidValidators,
+            ErrorID::InvalidBlockNumber => Error::InvalidBlockNumber(Mismatch {
+                expected: rlp.val_at(1)?,
+                found: rlp.val_at(2)?,
+            }),
         };
         RlpHelper::check_size(rlp, tag)?;
         Ok(error)
@@ -219,6 +237,8 @@ impl Display for Error {
                 idx,
                 parent_height,
             } => write!(f, "The validator index {} is invalid at the parent hash {}", idx, parent_height),
+            Error::InvalidValidators => write!(f, "Cannot update validators"),
+            Error::InvalidBlockNumber(mismatch) => write!(f, "Invalid block number: {}", mismatch),
         }
     }
 }

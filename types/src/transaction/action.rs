@@ -15,8 +15,8 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use crate::errors::SyntaxError;
-use crate::transaction::{Approval, ShardTransaction};
-use crate::{CommonParams, ShardId};
+use crate::transaction::{Approval, ShardTransaction, Validator};
+use crate::{BlockNumber, CommonParams, ShardId};
 use ccrypto::Blake;
 use ckey::{verify, Address, NetworkId};
 use primitives::{Bytes, H256};
@@ -33,6 +33,7 @@ enum ActionTag {
     SelfNominate = 0x24,
     ReportDoubleVote = 0x25,
     Redelegate = 0x26,
+    UpdateValidators = 0x30,
     ChangeParams = 0xFF,
 }
 
@@ -54,6 +55,7 @@ impl Decodable for ActionTag {
             0x24 => Ok(Self::SelfNominate),
             0x25 => Ok(Self::ReportDoubleVote),
             0x26 => Ok(Self::Redelegate),
+            0x30 => Ok(Self::UpdateValidators),
             0xFF => Ok(Self::ChangeParams),
             _ => Err(DecoderError::Custom("Unexpected action prefix")),
         }
@@ -101,6 +103,10 @@ pub enum Action {
     ReportDoubleVote {
         message1: Bytes,
         message2: Bytes,
+    },
+    UpdateValidators {
+        block_number: BlockNumber,
+        validators: Vec<Validator>,
     },
 }
 
@@ -296,6 +302,15 @@ impl Encodable for Action {
             } => {
                 s.begin_list(3).append(&ActionTag::ReportDoubleVote).append(message1).append(message2);
             }
+            Action::UpdateValidators {
+                block_number,
+                validators,
+            } => {
+                let s = s.begin_list(validators.len() + 2).append(&ActionTag::UpdateValidators).append(block_number);
+                for validator in validators {
+                    s.append(validator);
+                }
+            }
         }
     }
 }
@@ -428,6 +443,14 @@ impl Decodable for Action {
                     message2,
                 })
             }
+            ActionTag::UpdateValidators => {
+                let block_number = rlp.val_at(1)?;
+                let validators = rlp.iter().skip(2).map(|rlp| rlp.as_val()).collect::<Result<_, _>>()?;
+                Ok(Action::UpdateValidators {
+                    block_number,
+                    validators,
+                })
+            }
         }
     }
 }
@@ -455,6 +478,14 @@ mod tests {
                 Approval::new(Signature::random(), Public::random()),
                 Approval::new(Signature::random(), Public::random()),
             ],
+        });
+    }
+
+    #[test]
+    fn rlp_of_update_validators() {
+        rlp_encode_and_decode_test!(Action::UpdateValidators {
+            block_number: 100,
+            validators: vec![Validator::new(1, 2, Public::random()), Validator::new(3, 4, Public::random())],
         });
     }
 
