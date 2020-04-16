@@ -129,6 +129,7 @@ impl Stakeholders {
         Ok(result)
     }
 
+    #[allow(dead_code)]
     pub fn contains(&self, address: &Address) -> bool {
         self.0.contains(address)
     }
@@ -226,10 +227,6 @@ impl<'a> Delegation<'a> {
 #[derive(Debug)]
 pub struct NextValidators(Vec<Validator>);
 impl NextValidators {
-    pub fn from_vector_to_test(vec: Vec<Validator>) -> Self {
-        Self(vec)
-    }
-
     pub fn load_from_state(state: &TopLevelState) -> StateResult<Self> {
         let key = &*NEXT_VALIDATORS_KEY;
         let validators = state.action_data(&key)?.map(|data| decode_list(&data)).unwrap_or_default();
@@ -305,9 +302,10 @@ impl NextValidators {
         Ok(())
     }
 
-    pub fn update_weight(&mut self, block_author: &Address) {
-        let min_delegation = self.min_delegation();
-        for validator in self.0.iter_mut().rev() {
+    pub fn update_weight(state: &TopLevelState, block_author: &Address) -> StateResult<Self> {
+        let mut validators = Self::load_from_state(state)?;
+        let min_delegation = validators.min_delegation();
+        for validator in validators.0.iter_mut().rev() {
             if public_to_address(validator.pubkey()) == *block_author {
                 // block author
                 validator.set_weight(validator.weight().saturating_sub(min_delegation));
@@ -316,10 +314,11 @@ impl NextValidators {
             // neglecting validators
             validator.set_weight(validator.weight().saturating_sub(min_delegation * 2));
         }
-        if self.0.iter().all(|validator| validator.weight() == 0) {
-            self.0.iter_mut().for_each(Validator::reset);
+        if validators.0.iter().all(|validator| validator.weight() == 0) {
+            validators.0.iter_mut().for_each(Validator::reset);
         }
-        self.0.sort_unstable();
+        validators.0.sort_unstable();
+        Ok(validators)
     }
 
     pub fn remove(&mut self, target: &Address) {
@@ -340,6 +339,12 @@ impl Deref for NextValidators {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl From<Vec<Validator>> for NextValidators {
+    fn from(validators: Vec<Validator>) -> Self {
+        Self(validators)
     }
 }
 
@@ -542,6 +547,7 @@ impl Candidates {
     }
 }
 
+#[derive(Clone)]
 pub struct Jail(BTreeMap<Address, Prisoner>);
 #[derive(Clone, Debug, Eq, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct Prisoner {
@@ -617,11 +623,8 @@ impl Jail {
         }
     }
 
-    pub fn drain_released_prisoners(&mut self, term_index: u64) -> Vec<Prisoner> {
-        let (released, retained): (Vec<_>, Vec<_>) =
-            self.0.values().cloned().partition(|c| c.released_at <= term_index);
-        self.0 = retained.into_iter().map(|c| (c.address, c)).collect();
-        released
+    pub fn released_addresses(self, term_index: u64) -> Vec<Address> {
+        self.0.values().filter(|c| c.released_at <= term_index).map(|c| c.address).collect()
     }
 }
 
@@ -1458,7 +1461,8 @@ mod tests {
 
         // Kick
         let mut jail = Jail::load_from_state(&state).unwrap();
-        let released = jail.drain_released_prisoners(19);
+        let released =
+            jail.clone().released_addresses(19).iter().map(|address| jail.remove(address).unwrap()).collect::<Vec<_>>();
         jail.save_to_state(&mut state).unwrap();
 
         // Assert
@@ -1503,7 +1507,12 @@ mod tests {
 
         // Kick
         let mut jail = Jail::load_from_state(&state).unwrap();
-        let released = jail.drain_released_prisoners(20);
+        let released = jail
+            .clone()
+            .released_addresses(20)
+            .into_iter()
+            .map(|address| jail.remove(&address).unwrap())
+            .collect::<Vec<_>>();
         jail.save_to_state(&mut state).unwrap();
 
         // Assert
@@ -1553,7 +1562,12 @@ mod tests {
 
         // Kick
         let mut jail = Jail::load_from_state(&state).unwrap();
-        let released = jail.drain_released_prisoners(25);
+        let released = jail
+            .clone()
+            .released_addresses(25)
+            .into_iter()
+            .map(|address| jail.remove(&address).unwrap())
+            .collect::<Vec<_>>();
         jail.save_to_state(&mut state).unwrap();
 
         // Assert

@@ -68,6 +68,12 @@ pub enum Action {
         message2: Bytes,
     },
     UpdateValidators,
+    CloseTerm,
+    ReleaseJailed,
+    Jail,
+    IncreaseTermId,
+    ChangeNextValidators,
+    UpdateTermParams,
 }
 
 impl Action {
@@ -143,7 +149,26 @@ impl Action {
                 message2,
             },
             ActionType::UpdateValidators {
-            } => Action::UpdateValidators,  // TODO: Implement serialization
+                ..
+            } => Action::UpdateValidators, // TODO: Implement serialization
+            ActionType::CloseTerm {
+                ..
+            } => Action::CloseTerm, // TODO: Implement serialization
+            ActionType::ReleaseJailed {
+                ..
+            } => Action::ReleaseJailed, // TODO: Implement serialization
+            ActionType::Jail {
+                ..
+            } => Action::Jail, // TODO: Implement serialization
+            ActionType::IncreaseTermId {
+                ..
+            } => Action::IncreaseTermId, // TODO: Implement serialization
+            ActionType::ChangeNextValidators {
+                ..
+            } => Action::ChangeNextValidators, // TODO: Implement serialization
+            ActionType::UpdateTermParams {
+                ..
+            } => Action::UpdateTermParams, // TODO: Implement serialization
         }
     }
 }
@@ -222,6 +247,12 @@ impl TryFrom<Action> for ActionType {
                 message2,
             },
             Action::UpdateValidators => unreachable!("No reason to get UpdateValidators from RPCs"),
+            Action::CloseTerm => unreachable!("No reason to get CloseTerm from RPCs"),
+            Action::IncreaseTermId => unreachable!("No reason to get IncreaseTermId from RPCs"),
+            Action::ReleaseJailed => unreachable!("No reason to get Jail from RPCs"),
+            Action::Jail => unreachable!("No reason to get Jail from RPCs"),
+            Action::ChangeNextValidators => unreachable!("No reason to get ChangeNextValidators from RPCs"),
+            Action::UpdateTermParams => unreachable!("No reason to get UpdateTermParams from RPCs"),
         })
     }
 }

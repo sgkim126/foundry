@@ -37,11 +37,14 @@
 
 use crate::cache::{ModuleCache, ShardCache, TopCache};
 use crate::checkpoint::{CheckpointId, StateWithCheckpoint};
-use crate::stake::{change_params, delegate_ccs, redelegate, revoke, transfer_ccs};
+use crate::stake::{
+    change_params, close_term, delegate_ccs, jail, redelegate, release_jailed_prisoners, revoke, self_nominate,
+    transfer_ccs,
+};
 use crate::traits::{ModuleStateView, ShardState, ShardStateView, StateWithCache, TopState, TopStateView};
 use crate::{
-    self_nominate, Account, ActionData, CurrentValidators, FindDoubleVoteHandler, Metadata, MetadataAddress, Module,
-    ModuleAddress, ModuleLevelState, NextValidators, Shard, ShardAddress, ShardLevelState, StateDB, StateResult,
+    Account, ActionData, CurrentValidators, FindDoubleVoteHandler, Metadata, MetadataAddress, Module, ModuleAddress,
+    ModuleLevelState, NextValidators, Shard, ShardAddress, ShardLevelState, StateDB, StateResult,
 };
 use cdb::{AsHashDB, DatabaseError};
 use ckey::{public_to_address, Address, Ed25519Public as Public, NetworkId};
@@ -452,6 +455,84 @@ impl TopLevelState {
                 current_validators.update(validators.clone());
                 current_validators.save_to_state(self)?;
                 return Ok(())
+            }
+            Action::CloseTerm {
+                block_number,
+                inactive_validators,
+            } => {
+                if *block_number != parent_block_number + 1 {
+                    return Err(RuntimeError::InvalidBlockNumber(Mismatch {
+                        found: *block_number,
+                        expected: parent_block_number + 1,
+                    })
+                    .into())
+                }
+                return close_term(self, inactive_validators)
+            }
+            Action::ReleaseJailed {
+                block_number,
+                released_addresses,
+            } => {
+                if *block_number != parent_block_number + 1 {
+                    return Err(RuntimeError::InvalidBlockNumber(Mismatch {
+                        found: *block_number,
+                        expected: parent_block_number + 1,
+                    })
+                    .into())
+                }
+                return release_jailed_prisoners(self, released_addresses)
+            }
+            Action::Jail {
+                block_number,
+                prisoners,
+                custody_until,
+                kick_at,
+            } => {
+                if *block_number != parent_block_number + 1 {
+                    return Err(RuntimeError::InvalidBlockNumber(Mismatch {
+                        found: *block_number,
+                        expected: parent_block_number + 1,
+                    })
+                    .into())
+                }
+                return jail(self, prisoners, *custody_until, *kick_at)
+            }
+            Action::IncreaseTermId {
+                block_number,
+            } => {
+                if *block_number != parent_block_number + 1 {
+                    return Err(RuntimeError::InvalidBlockNumber(Mismatch {
+                        found: *block_number,
+                        expected: parent_block_number + 1,
+                    })
+                    .into())
+                }
+                return self.increase_term_id(*block_number)
+            }
+            Action::ChangeNextValidators {
+                block_number,
+                validators,
+            } => {
+                if *block_number != parent_block_number + 1 {
+                    return Err(RuntimeError::InvalidBlockNumber(Mismatch {
+                        found: *block_number,
+                        expected: parent_block_number + 1,
+                    })
+                    .into())
+                }
+                return NextValidators::from(validators.clone()).save_to_state(self)
+            }
+            Action::UpdateTermParams {
+                block_number,
+            } => {
+                if *block_number != parent_block_number + 1 {
+                    return Err(RuntimeError::InvalidBlockNumber(Mismatch {
+                        found: *block_number,
+                        expected: parent_block_number + 1,
+                    })
+                    .into())
+                }
+                return self.update_term_params()
             }
         };
         self.apply_shard_transaction(

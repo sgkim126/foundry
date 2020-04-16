@@ -34,6 +34,12 @@ enum ActionTag {
     ReportDoubleVote = 0x25,
     Redelegate = 0x26,
     UpdateValidators = 0x30,
+    CloseTerm = 0x31,
+    ReleaseJailed = 0x32,
+    Jail = 0x33,
+    IncreaseTermId = 0x34,
+    ChangeNextValidators = 0x35,
+    UpdateTermParams = 0x36,
     ChangeParams = 0xFF,
 }
 
@@ -56,6 +62,12 @@ impl Decodable for ActionTag {
             0x25 => Ok(Self::ReportDoubleVote),
             0x26 => Ok(Self::Redelegate),
             0x30 => Ok(Self::UpdateValidators),
+            0x31 => Ok(Self::CloseTerm),
+            0x32 => Ok(Self::ReleaseJailed),
+            0x33 => Ok(Self::Jail),
+            0x34 => Ok(Self::IncreaseTermId),
+            0x35 => Ok(Self::ChangeNextValidators),
+            0x36 => Ok(Self::UpdateTermParams),
             0xFF => Ok(Self::ChangeParams),
             _ => Err(DecoderError::Custom("Unexpected action prefix")),
         }
@@ -107,6 +119,30 @@ pub enum Action {
     UpdateValidators {
         block_number: BlockNumber,
         validators: Vec<Validator>,
+    },
+    CloseTerm {
+        block_number: BlockNumber,
+        inactive_validators: Vec<Address>,
+    },
+    ReleaseJailed {
+        block_number: BlockNumber,
+        released_addresses: Vec<Address>,
+    },
+    Jail {
+        block_number: BlockNumber,
+        prisoners: Vec<Address>,
+        custody_until: u64,
+        kick_at: u64,
+    },
+    IncreaseTermId {
+        block_number: BlockNumber,
+    },
+    ChangeNextValidators {
+        block_number: BlockNumber,
+        validators: Vec<Validator>,
+    },
+    UpdateTermParams {
+        block_number: BlockNumber,
     },
 }
 
@@ -311,6 +347,58 @@ impl Encodable for Action {
                     s.append(validator);
                 }
             }
+            Action::CloseTerm {
+                block_number,
+                inactive_validators,
+            } => {
+                s.begin_list(inactive_validators.len() + 2).append(&ActionTag::CloseTerm).append(block_number);
+                for validator in inactive_validators {
+                    s.append(validator);
+                }
+            }
+            Action::ReleaseJailed {
+                block_number,
+                released_addresses,
+            } => {
+                s.begin_list(2 + released_addresses.len()).append(&ActionTag::ReleaseJailed).append(block_number);
+                for address in released_addresses {
+                    s.append(address);
+                }
+            }
+            Action::Jail {
+                block_number,
+                prisoners,
+                custody_until,
+                kick_at,
+            } => {
+                s.begin_list(4 + prisoners.len())
+                    .append(&ActionTag::Jail)
+                    .append(block_number)
+                    .append(custody_until)
+                    .append(kick_at);
+                for validator in prisoners {
+                    s.append(validator);
+                }
+            }
+            Action::IncreaseTermId {
+                block_number,
+            } => {
+                s.begin_list(2).append(&ActionTag::IncreaseTermId).append(block_number);
+            }
+            Action::ChangeNextValidators {
+                block_number,
+                validators,
+            } => {
+                s.begin_list(2 + validators.len()).append(&ActionTag::ChangeNextValidators).append(block_number);
+                for validator in validators {
+                    s.append(validator);
+                }
+            }
+            Action::UpdateTermParams {
+                block_number,
+            } => {
+                s.begin_list(2).append(&ActionTag::UpdateTermParams).append(block_number);
+            }
         }
     }
 }
@@ -444,11 +532,108 @@ impl Decodable for Action {
                 })
             }
             ActionTag::UpdateValidators => {
+                let item_count = rlp.item_count()?;
+                if item_count < 2 {
+                    return Err(DecoderError::RlpIncorrectListLen {
+                        expected: 2,
+                        got: item_count,
+                    })
+                }
                 let block_number = rlp.val_at(1)?;
                 let validators = rlp.iter().skip(2).map(|rlp| rlp.as_val()).collect::<Result<_, _>>()?;
                 Ok(Action::UpdateValidators {
                     block_number,
                     validators,
+                })
+            }
+            ActionTag::CloseTerm => {
+                let item_count = rlp.item_count()?;
+                if item_count < 2 {
+                    return Err(DecoderError::RlpIncorrectListLen {
+                        expected: 2,
+                        got: item_count,
+                    })
+                }
+                let block_number = rlp.val_at(1)?;
+                let inactive_validators = rlp.iter().skip(2).map(|rlp| rlp.as_val()).collect::<Result<_, _>>()?;
+                Ok(Action::CloseTerm {
+                    block_number,
+                    inactive_validators,
+                })
+            }
+            ActionTag::ReleaseJailed => {
+                let item_count = rlp.item_count()?;
+                if item_count < 2 {
+                    return Err(DecoderError::RlpIncorrectListLen {
+                        expected: 2,
+                        got: item_count,
+                    })
+                }
+                let block_number = rlp.val_at(1)?;
+                let released_addresses = rlp.iter().skip(2).map(|rlp| rlp.as_val()).collect::<Result<_, _>>()?;
+                Ok(Action::ReleaseJailed {
+                    block_number,
+                    released_addresses,
+                })
+            }
+            ActionTag::Jail => {
+                let item_count = rlp.item_count()?;
+                if item_count < 4 {
+                    return Err(DecoderError::RlpIncorrectListLen {
+                        expected: 4,
+                        got: item_count,
+                    })
+                }
+                let block_number = rlp.val_at(1)?;
+                let custody_until = rlp.val_at(2)?;
+                let kick_at = rlp.val_at(3)?;
+                let prisoners = rlp.iter().skip(4).map(|rlp| rlp.as_val()).collect::<Result<_, _>>()?;
+                Ok(Action::Jail {
+                    block_number,
+                    prisoners,
+                    custody_until,
+                    kick_at,
+                })
+            }
+            ActionTag::IncreaseTermId => {
+                let item_count = rlp.item_count()?;
+                if item_count != 2 {
+                    return Err(DecoderError::RlpIncorrectListLen {
+                        expected: 2,
+                        got: item_count,
+                    })
+                }
+                let block_number = rlp.val_at(1)?;
+                Ok(Action::IncreaseTermId {
+                    block_number,
+                })
+            }
+            ActionTag::ChangeNextValidators => {
+                let item_count = rlp.item_count()?;
+                if item_count < 2 {
+                    return Err(DecoderError::RlpIncorrectListLen {
+                        expected: 2,
+                        got: item_count,
+                    })
+                }
+                let block_number = rlp.val_at(1)?;
+                let validators = rlp.iter().skip(2).map(|rlp| rlp.as_val()).collect::<Result<_, _>>()?;
+                Ok(Action::ChangeNextValidators {
+                    block_number,
+                    validators,
+                })
+            }
+            ActionTag::UpdateTermParams => {
+                let item_count = rlp.item_count()?;
+                if item_count != 2 {
+                    return Err(DecoderError::RlpIncorrectListLen {
+                        expected: 2,
+                        got: item_count,
+                    })
+                }
+                let block_number = rlp.val_at(1)?;
+                Ok(Action::UpdateTermParams {
+                    block_number,
                 })
             }
         }
@@ -486,6 +671,54 @@ mod tests {
         rlp_encode_and_decode_test!(Action::UpdateValidators {
             block_number: 100,
             validators: vec![Validator::new(1, 2, Public::random()), Validator::new(3, 4, Public::random())],
+        });
+    }
+
+    #[test]
+    fn rlp_of_close_term() {
+        rlp_encode_and_decode_test!(Action::CloseTerm {
+            block_number: 37,
+            inactive_validators: vec![],
+        });
+    }
+
+    #[test]
+    fn rlp_of_release_jailed() {
+        rlp_encode_and_decode_test!(Action::ReleaseJailed {
+            block_number: 37,
+            released_addresses: vec![],
+        });
+    }
+
+    #[test]
+    fn rlp_of_jail() {
+        rlp_encode_and_decode_test!(Action::Jail {
+            block_number: 42,
+            prisoners: vec![],
+            custody_until: 17,
+            kick_at: 31,
+        });
+    }
+
+    #[test]
+    fn rlp_of_increase_term_id() {
+        rlp_encode_and_decode_test!(Action::IncreaseTermId {
+            block_number: 39,
+        });
+    }
+
+    #[test]
+    fn rlp_of_change_next_validators() {
+        rlp_encode_and_decode_test!(Action::ChangeNextValidators {
+            block_number: 47,
+            validators: vec![],
+        });
+    }
+
+    #[test]
+    fn rlp_of_update_term_params() {
+        rlp_encode_and_decode_test!(Action::UpdateTermParams {
+            block_number: 39,
         });
     }
 
