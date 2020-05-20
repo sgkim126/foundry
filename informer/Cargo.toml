@@ -10,7 +10,6 @@ edition = "2018"
 cidr = "0.0.4"
 codechain-logger = { path = "../util/logger" }
 kvdb = "0.1"
-lazy_static = "1.2"
 crossbeam-channel = "0.3"
 parking_lot = "0.10"
 rlp = { git = "https://github.com/CodeChain-io/rlp.git", version = "0.4" }
