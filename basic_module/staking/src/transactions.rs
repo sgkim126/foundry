@@ -16,10 +16,10 @@
 
 use crate::chain_history_manager;
 use crate::state::{Jail, Metadata, NextValidators, Params};
-use crate::types::{Approval, DepositQuantity, NetworkId, StakeQuantity, Validator};
+use crate::types::{Approval, DepositQuantity, StakeQuantity, Validator};
 use ccrypto::blake256;
 use coordinator::Header;
-use fkey::{verify, Ed25519Public as Public, Signature};
+use fkey::{verify, Ed25519Public as Public, NetworkId, Signature};
 use primitives::{Bytes, H256};
 use std::collections::HashSet;
 

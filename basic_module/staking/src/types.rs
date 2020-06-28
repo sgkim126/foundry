@@ -17,26 +17,10 @@
 use fkey::{Ed25519Public as Public, Signature};
 use ftypes::BlockNumber;
 use primitives::Bytes;
-use std::{fmt, str};
+use std::str;
 
 pub type StakeQuantity = u64;
 pub type DepositQuantity = u64;
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone, Copy)]
-pub struct NetworkId([u8; 2]);
-
-impl fmt::Display for NetworkId {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let s = str::from_utf8(&self.0).expect("network_id a valid utf8 string");
-        write!(f, "{}", s)
-    }
-}
-
-impl Default for NetworkId {
-    fn default() -> Self {
-        NetworkId([116, 99])
-    }
-}
 
 #[derive(Eq, Default, Ord, PartialEq, PartialOrd, Serialize, Deserialize, Clone, Copy, Debug)]
 pub struct Tiebreaker {

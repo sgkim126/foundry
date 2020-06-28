@@ -365,7 +365,6 @@ mod tx_tests {
         assert_eq!(handler.get_balance(&receiver), 0);
     }
 
-
     #[test]
     fn execute_insufficient() {
         let sender_private = Private::random();

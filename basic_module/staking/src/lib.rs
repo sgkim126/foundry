@@ -29,8 +29,8 @@ mod syntax_error;
 mod transactions;
 mod types;
 
-use crate::types::NetworkId;
 use coordinator::context::{ChainHistoryAccess, SubStateHistoryAccess, SubStorageAccess};
+use fkey::NetworkId;
 use imported::{AccountManager, AccountView};
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
