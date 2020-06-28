@@ -23,6 +23,7 @@ use crate::transactions::{
     create_close_block_transactions, create_open_block_transactions, SignedTransaction, Transaction,
 };
 use crate::types::{Tiebreaker, Validator};
+use coordinator::context::SubStorageAccess;
 use coordinator::types::{ExecuteTransactionError, HeaderError, TransactionExecutionOutcome, VerifiedCrime};
 use coordinator::Header;
 use fkey::Ed25519Public as Public;
@@ -33,10 +34,22 @@ struct ABCIHandle {
     executing_block_header: RefCell<Header>,
 }
 
+impl ABCIHandle {
+    fn substorage(&self) -> &dyn SubStorageAccess {
+        unimplemented!()
+    }
+
+    fn mut_substorage(&self) -> &mut dyn SubStorageAccess {
+        unimplemented!()
+    }
+}
+
 impl AdditionalTxCreator for ABCIHandle {
     fn create(&self) -> Vec<Transaction> {
-        let mut transactions = create_open_block_transactions();
-        transactions.extend(create_close_block_transactions(&*self.executing_block_header.borrow()).into_iter());
+        let storage = self.substorage();
+        let mut transactions = create_open_block_transactions(storage);
+        transactions
+            .extend(create_close_block_transactions(storage, &*self.executing_block_header.borrow()).into_iter());
         transactions
     }
 }
@@ -66,12 +79,14 @@ impl Abci for ABCIHandle {
                         nominated_at_block_number: self.executing_block_header.borrow().number(),
                         nominated_at_transaction_index: user_tx_idx,
                     };
-                    apply_internal(tx, &signer_public, tiebreaker).map_err(Error::Runtime)
+                    apply_internal(self.mut_substorage(), tx, &signer_public, tiebreaker).map_err(Error::Runtime)
                 }),
-                Transaction::Auto(auto_action) => {
-                    execute_auto_action(auto_action, self.executing_block_header.borrow().number())
-                        .map_err(Error::Runtime)
-                }
+                Transaction::Auto(auto_action) => execute_auto_action(
+                    self.mut_substorage(),
+                    auto_action,
+                    self.executing_block_header.borrow().number(),
+                )
+                .map_err(Error::Runtime),
             })
             .collect();
         // TODO: handle errors
@@ -88,21 +103,27 @@ impl Abci for ABCIHandle {
 
 struct StakingViewer {}
 
+impl StakingViewer {
+    fn substorage(&self) -> &dyn SubStorageAccess {
+        unimplemented!()
+    }
+}
+
 impl StakingView for StakingViewer {
     fn get_stakes(&self) -> HashMap<Public, u64> {
-        get_stakes()
+        get_stakes(self.substorage())
     }
 
     fn get_validators(&self) -> Vec<Validator> {
-        CurrentValidators::load().into()
+        CurrentValidators::load(self.substorage()).into()
     }
 
     fn current_term_id(&self) -> u64 {
-        Metadata::load().current_term_id
+        Metadata::load(self.substorage()).current_term_id
     }
 
     fn get_term_common_params(&self) -> Params {
-        Metadata::load().term_params
+        Metadata::load(self.substorage()).term_params
     }
 
     fn is_term_changed(&self) -> bool {
@@ -110,14 +131,14 @@ impl StakingView for StakingViewer {
     }
 
     fn last_term_finished_block_num(&self) -> u64 {
-        Metadata::load().last_term_finished_block_num
+        Metadata::load(self.substorage()).last_term_finished_block_num
     }
 
     fn era(&self) -> u64 {
-        Metadata::load().term_params.era
+        Metadata::load(self.substorage()).term_params.era
     }
 
     fn get_banned_validators(&self) -> Banned {
-        Banned::load()
+        Banned::load(self.substorage())
     }
 }

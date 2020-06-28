@@ -29,15 +29,11 @@ mod syntax_error;
 mod transactions;
 mod types;
 
-use coordinator::context::{ChainHistoryAccess, SubStateHistoryAccess, SubStorageAccess};
+use coordinator::context::{ChainHistoryAccess, SubStateHistoryAccess};
 use fkey::NetworkId;
 use imported::{AccountManager, AccountView};
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
-
-fn substorage() -> Box<dyn SubStorageAccess> {
-    unimplemented!()
-}
 
 fn deserialize<T: serde::de::DeserializeOwned>(buffer: Vec<u8>) -> T {
     serde_cbor::from_slice(&buffer).unwrap()

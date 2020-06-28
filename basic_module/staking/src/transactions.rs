@@ -18,6 +18,7 @@ use crate::chain_history_manager;
 use crate::state::{Jail, Metadata, NextValidators, Params};
 use crate::types::{Approval, DepositQuantity, StakeQuantity, Validator};
 use ccrypto::blake256;
+use coordinator::context::SubStorageAccess;
 use coordinator::Header;
 use fkey::{verify, Ed25519Public as Public, NetworkId, Signature};
 use primitives::{Bytes, H256};
@@ -120,19 +121,19 @@ impl UserAction {
     }
 }
 
-pub fn create_close_block_transactions(current_header: &Header) -> Vec<Transaction> {
+pub fn create_close_block_transactions(storage: &dyn SubStorageAccess, current_header: &Header) -> Vec<Transaction> {
     let chain_history = chain_history_manager();
     let parent_hash = current_header.parent_hash();
     let parent_header = chain_history.get_block_header(parent_hash.clone().into()).expect("parent header must exist");
     let parent_metadata = Metadata::load_from(parent_hash.clone().into()).expect("parent metadata must exist");
-    let metadata = Metadata::load();
+    let metadata = Metadata::load(storage);
     let term = metadata.current_term_id;
     let term_seconds = match term {
         0 => parent_metadata.params.term_seconds,
         _ => parent_metadata.term_params.term_seconds,
     };
 
-    let mut next_validators = NextValidators::load();
+    let mut next_validators = NextValidators::load(storage);
     next_validators.update_weight(current_header.author());
 
     if is_term_close(current_header, &parent_header, term_seconds) {
@@ -157,7 +158,7 @@ pub fn create_close_block_transactions(current_header: &Header) -> Vec<Transacti
             assert_ne!(0, release_period);
             (current_term_id + custody_period, current_term_id + release_period)
         };
-        let released_addresses = Jail::load()
+        let released_addresses = Jail::load(storage)
             .drain_released_prisoners(current_term_id)
             .into_iter()
             .map(|prisoner| prisoner.pubkey)
@@ -205,8 +206,8 @@ fn inactive_validators(
     validators.into_iter().collect()
 }
 
-pub fn create_open_block_transactions() -> Vec<Transaction> {
+pub fn create_open_block_transactions(storage: &dyn SubStorageAccess) -> Vec<Transaction> {
     vec![Transaction::Auto(AutoAction::UpdateValidators {
-        validators: NextValidators::load(),
+        validators: NextValidators::load(storage),
     })]
 }

@@ -17,7 +17,8 @@
 use crate::error::{Insufficient, Mismatch};
 use crate::runtime_error::Error;
 use crate::types::{Candidate, DepositQuantity, Prisoner, ReleaseResult, StakeQuantity, Tiebreaker, Validator};
-use crate::{account_viewer, deserialize, serialize, state_history_manager, substorage};
+use crate::{account_viewer, deserialize, serialize, state_history_manager};
+use coordinator::context::SubStorageAccess;
 use fkey::Ed25519Public as Public;
 use ftypes::BlockId;
 use primitives::Bytes;
@@ -46,6 +47,7 @@ const BANNED_KEY: &[u8; 6] = b"Banned";
 // because candidates require the corresponding accounts' balance
 #[allow(dead_code)]
 pub fn init_stake(
+    storage: &mut dyn SubStorageAccess,
     genesis_stakes: HashMap<Public, u64>,
     genesis_candidates: HashMap<Public, Candidate>,
     genesis_delegations: HashMap<Public, HashMap<Public, u64>>,
@@ -68,16 +70,16 @@ pub fn init_stake(
         *stake -= total_delegation;
     }
 
-    let mut stakeholders = Stakeholders::load();
+    let mut stakeholders = Stakeholders::load(storage);
     for (public, amount) in &genesis_stakes {
         let account = StakeAccount {
             public,
             balance: *amount,
         };
         stakeholders.update_by_increased_balance(&account);
-        account.save();
+        account.save(storage);
     }
-    stakeholders.save();
+    stakeholders.save(storage);
 
     for (pubkey, candidate) in &genesis_candidates {
         let balance: u64 = account_viewer().get_balance(pubkey);
@@ -101,14 +103,14 @@ pub fn init_stake(
             );
         }
     }
-    candidates.save();
+    candidates.save(storage);
 
     for (delegator, delegations) in &genesis_delegations {
-        let mut delegation = Delegation::load(&delegator);
+        let mut delegation = Delegation::load(storage, &delegator);
         for (delegatee, amount) in delegations {
             delegation.add_quantity(*delegatee, *amount)?;
         }
-        delegation.save();
+        delegation.save(storage);
     }
 
     Ok(())
@@ -118,20 +120,20 @@ fn prefix_public_key(prefix: &[u8], key: &Public) -> Vec<u8> {
     [prefix, key.as_ref()].concat()
 }
 
-fn remove_key(key: &KEY) {
-    substorage().remove(key)
+fn remove_key(storage: &mut dyn SubStorageAccess, key: &KEY) {
+    storage.remove(key)
 }
 
-fn load_with_key<T: DeserializeOwned>(key: &KEY) -> Option<T> {
-    substorage().get(key).map(deserialize)
+fn load_with_key<T: DeserializeOwned>(storage: &dyn SubStorageAccess, key: &KEY) -> Option<T> {
+    storage.get(key).map(deserialize)
 }
 
 fn load_with_key_from<T: DeserializeOwned>(key: &KEY, id: BlockId) -> Option<T> {
     state_history_manager().get_at(Some(id), key).map(deserialize)
 }
 
-fn write_with_key<T: Serialize>(key: &KEY, data: T) {
-    substorage().set(key, serialize(data))
+fn write_with_key<T: Serialize>(storage: &mut dyn SubStorageAccess, key: &KEY, data: T) {
+    storage.set(key, serialize(data))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -159,16 +161,16 @@ pub struct Params {
 }
 
 impl Metadata {
-    pub fn load() -> Self {
-        load_with_key(METADATA_KEY).expect("Params must be exist")
+    pub fn load(storage: &dyn SubStorageAccess) -> Self {
+        load_with_key(storage, METADATA_KEY).expect("Params must be exist")
     }
 
     pub fn load_from(state_id: BlockId) -> Option<Self> {
         load_with_key_from(METADATA_KEY, state_id)
     }
 
-    pub fn save(self) {
-        write_with_key(METADATA_KEY, self)
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
+        write_with_key(storage, METADATA_KEY, self)
     }
 
     pub fn update_params(&mut self, metadata_seq: u64, new_params: Params) -> Result<(), Error> {
@@ -201,15 +203,15 @@ pub struct StakeAccount<'a> {
 }
 
 impl<'a> StakeAccount<'a> {
-    pub fn load(public: &'a Public) -> Self {
+    pub fn load(storage: &dyn SubStorageAccess, public: &'a Public) -> Self {
         StakeAccount {
             public,
-            balance: load_with_key(&prefix_public_key(&STAKE_ACCOUNT_PREFIX, public)).unwrap_or_default(),
+            balance: load_with_key(storage, &prefix_public_key(&STAKE_ACCOUNT_PREFIX, public)).unwrap_or_default(),
         }
     }
 
-    pub fn save(self) {
-        write_with_key(&prefix_public_key(&STAKE_ACCOUNT_PREFIX, self.public), self.balance)
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
+        write_with_key(storage, &prefix_public_key(&STAKE_ACCOUNT_PREFIX, self.public), self.balance)
     }
 
     pub fn subtract_balance(&mut self, quantity: StakeQuantity) -> Result<(), Error> {
@@ -236,19 +238,19 @@ pub struct Delegation<'a> {
 }
 
 impl<'a> Delegation<'a> {
-    pub fn load(delegator: &'a Public) -> Self {
+    pub fn load(storage: &dyn SubStorageAccess, delegator: &'a Public) -> Self {
         Delegation {
             delegator,
-            delegatees: load_with_key(&prefix_public_key(&DELEGATION_PREFIX, delegator)).unwrap_or_default(),
+            delegatees: load_with_key(storage, &prefix_public_key(&DELEGATION_PREFIX, delegator)).unwrap_or_default(),
         }
     }
 
-    pub fn save(self) {
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
         let Delegation {
             delegator,
             delegatees,
         } = self;
-        write_with_key(delegator, delegatees)
+        write_with_key(storage, delegator, delegatees)
     }
 
     pub fn add_quantity(&mut self, delegatee: Public, quantity: StakeQuantity) -> Result<(), Error> {
@@ -300,22 +302,22 @@ impl<'a> Delegation<'a> {
 pub struct Stakeholders(BTreeSet<Public>);
 
 impl Stakeholders {
-    pub fn load() -> Stakeholders {
-        Stakeholders(load_with_key(STAKEHOLDERS_KEY).unwrap_or_default())
+    pub fn load(storage: &dyn SubStorageAccess) -> Stakeholders {
+        Stakeholders(load_with_key(storage, STAKEHOLDERS_KEY).unwrap_or_default())
     }
 
-    pub fn save(self) {
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
         let key = STAKEHOLDERS_KEY;
         if !self.0.is_empty() {
-            write_with_key(key, self.0)
+            write_with_key(storage, key, self.0)
         } else {
-            remove_key(key)
+            remove_key(storage, key)
         }
     }
 
-    pub fn delegatees() -> HashMap<Public, StakeQuantity> {
-        Stakeholders::load().0.into_iter().fold(HashMap::new(), |mut map, stakeholder| {
-            let delegation = Delegation::load(&stakeholder);
+    pub fn delegatees(storage: &dyn SubStorageAccess) -> HashMap<Public, StakeQuantity> {
+        Stakeholders::load(storage).0.into_iter().fold(HashMap::new(), |mut map, stakeholder| {
+            let delegation = Delegation::load(storage, &stakeholder);
             delegation.into_iter().for_each(|(delegatee, quantity)| {
                 *map.entry(delegatee).or_default() += quantity;
             });
@@ -345,28 +347,28 @@ impl Stakeholders {
 pub struct NextValidators(Vec<Validator>);
 
 impl NextValidators {
-    pub fn load() -> Self {
-        NextValidators(load_with_key(NEXT_VALIDATORS_KEY).unwrap_or_default())
+    pub fn load(storage: &dyn SubStorageAccess) -> Self {
+        NextValidators(load_with_key(storage, NEXT_VALIDATORS_KEY).unwrap_or_default())
     }
 
-    pub fn save(self) {
-        write_with_key(NEXT_VALIDATORS_KEY, self.0)
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
+        write_with_key(storage, NEXT_VALIDATORS_KEY, self.0)
     }
 
-    pub fn elect() -> Self {
+    pub fn elect(storage: &dyn SubStorageAccess) -> Self {
         let Params {
             delegation_threshold,
             max_num_of_validators,
             min_num_of_validators,
             min_deposit,
             ..
-        } = Metadata::load().term_params;
+        } = Metadata::load(storage).term_params;
         assert!(max_num_of_validators >= min_num_of_validators);
         // Sorted by (delegation DESC, deposit DESC, tiebreaker ASC)
-        let mut validators = Candidates::prepare_validators(min_deposit);
+        let mut validators = Candidates::prepare_validators(storage, min_deposit);
 
         {
-            let banned = Banned::load();
+            let banned = Banned::load(storage);
             validators.iter().for_each(|validator| {
                 let public = &validator.pubkey();
                 assert!(!banned.is_banned(&public), "{:?} is banned public", public);
@@ -446,16 +448,16 @@ impl From<Vec<Validator>> for NextValidators {
 
 pub struct CurrentValidators(Vec<Validator>);
 impl CurrentValidators {
-    pub fn load() -> Self {
-        CurrentValidators(load_with_key(CURRENT_VALIDATORS_KEY).unwrap_or_default())
+    pub fn load(storage: &dyn SubStorageAccess) -> Self {
+        CurrentValidators(load_with_key(storage, CURRENT_VALIDATORS_KEY).unwrap_or_default())
     }
 
-    pub fn save(self) {
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
         let key = CURRENT_VALIDATORS_KEY;
         if !self.is_empty() {
-            write_with_key(key, self.0)
+            write_with_key(storage, key, self.0)
         } else {
-            remove_key(key)
+            remove_key(storage, key)
         }
     }
 
@@ -495,17 +497,17 @@ impl From<CurrentValidators> for Vec<Validator> {
 pub struct Candidates(Vec<Candidate>);
 
 impl Candidates {
-    pub fn load() -> Self {
-        Candidates(load_with_key(CANDIDATES_KEY).unwrap_or_default())
+    pub fn load(storage: &dyn SubStorageAccess) -> Self {
+        Candidates(load_with_key(storage, CANDIDATES_KEY).unwrap_or_default())
     }
 
-    pub fn save(self) {
-        write_with_key(CANDIDATES_KEY, self.0)
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
+        write_with_key(storage, CANDIDATES_KEY, self.0)
     }
 
-    fn prepare_validators(min_deposit: DepositQuantity) -> Vec<Validator> {
-        let Candidates(candidates) = Self::load();
-        let delegations = Stakeholders::delegatees();
+    fn prepare_validators(storage: &dyn SubStorageAccess, min_deposit: DepositQuantity) -> Vec<Validator> {
+        let Candidates(candidates) = Self::load(storage);
+        let delegations = Stakeholders::delegatees(storage);
         let mut result =
             candidates.into_iter().filter(|c| c.deposit >= min_deposit).fold(Vec::new(), |mut vec, candidate| {
                 let public = &candidate.pubkey;
@@ -595,15 +597,15 @@ impl Candidates {
 pub struct Jail(BTreeMap<Public, Prisoner>);
 
 impl Jail {
-    pub fn load() -> Self {
-        let prisoners: Vec<Prisoner> = load_with_key(JAIL_KEY).unwrap_or_default();
+    pub fn load(storage: &dyn SubStorageAccess) -> Self {
+        let prisoners: Vec<Prisoner> = load_with_key(storage, JAIL_KEY).unwrap_or_default();
         Jail(prisoners.into_iter().map(|p| (p.pubkey, p)).collect())
     }
 
-    pub fn save(self) {
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
         if !self.0.is_empty() {
             let vectorized: Vec<Prisoner> = self.0.into_iter().map(|(_, p)| p).collect();
-            write_with_key(JAIL_KEY, vectorized)
+            write_with_key(storage, JAIL_KEY, vectorized)
         }
     }
 
@@ -650,13 +652,13 @@ impl Jail {
 pub struct Banned(BTreeSet<Public>);
 
 impl Banned {
-    pub fn load() -> Self {
-        Banned(load_with_key(BANNED_KEY).unwrap_or_default())
+    pub fn load(storage: &dyn SubStorageAccess) -> Self {
+        Banned(load_with_key(storage, BANNED_KEY).unwrap_or_default())
     }
 
     #[allow(dead_code)]
-    pub fn save(self) {
-        write_with_key(BANNED_KEY, self.0)
+    pub fn save(self, storage: &mut dyn SubStorageAccess) {
+        write_with_key(storage, BANNED_KEY, self.0)
     }
 
     #[allow(dead_code)]
@@ -669,13 +671,13 @@ impl Banned {
     }
 }
 
-pub fn get_stakes() -> HashMap<Public, u64> {
-    let stakeholders = Stakeholders::load();
+pub fn get_stakes(storage: &dyn SubStorageAccess) -> HashMap<Public, u64> {
+    let stakeholders = Stakeholders::load(storage);
     stakeholders
         .iter()
         .map(|stakeholder| {
-            let account = StakeAccount::load(stakeholder);
-            let delegation = Delegation::load(stakeholder);
+            let account = StakeAccount::load(storage, stakeholder);
+            let delegation = Delegation::load(storage, stakeholder);
             (*stakeholder, account.balance + delegation.sum())
         })
         .collect()
