@@ -15,13 +15,14 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 use super::backup;
-use super::mem_pool_types::{CurrentQueue, MemPoolInput, MemPoolItem, PoolingInstant, TransactionOrder, TxOrigin};
+use super::mem_pool_types::{CurrentQueue, MemPoolInput, MemPoolItem, PoolingInstant, TransactionOrder};
 use super::TransactionImportResult;
 use crate::client::{AccountData, BlockChainTrait};
 use crate::transaction::{PendingVerifiedTransactions, VerifiedTransaction};
 use crate::Error as CoreError;
 use ckey::Ed25519Public as Public;
 use coordinator::engine::TxFilter;
+use coordinator::TxOrigin;
 use ctypes::errors::{HistoryError, RuntimeError, SyntaxError};
 use ctypes::TxHash;
 use kvdb::{DBTransaction, KeyValueDB};

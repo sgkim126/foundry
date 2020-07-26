@@ -16,74 +16,13 @@
 
 use crate::transaction::VerifiedTransaction;
 use ckey::Ed25519Public as Public;
+use coordinator::TxOrigin;
 use ctypes::{BlockNumber, TxHash};
-use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
 /// Point in time when transaction was inserted.
 pub type PoolingInstant = BlockNumber;
-
-/// Transaction origin
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TxOrigin {
-    /// Transaction coming from local RPC
-    Local,
-    /// External transaction received from network
-    External,
-}
-
-type TxOriginType = u8;
-const LOCAL: TxOriginType = 0x01;
-const EXTERNAL: TxOriginType = 0x02;
-
-impl Encodable for TxOrigin {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        match self {
-            TxOrigin::Local => LOCAL.rlp_append(s),
-            TxOrigin::External => EXTERNAL.rlp_append(s),
-        };
-    }
-}
-
-impl Decodable for TxOrigin {
-    fn decode(d: &Rlp<'_>) -> Result<Self, DecoderError> {
-        match d.as_val().expect("rlp decode Error") {
-            LOCAL => Ok(TxOrigin::Local),
-            EXTERNAL => Ok(TxOrigin::External),
-            _ => Err(DecoderError::Custom("Unexpected Txorigin type")),
-        }
-    }
-}
-
-impl PartialOrd for TxOrigin {
-    fn partial_cmp(&self, other: &TxOrigin) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for TxOrigin {
-    fn cmp(&self, other: &TxOrigin) -> Ordering {
-        if *other == *self {
-            return Ordering::Equal
-        }
-
-        match (*self, *other) {
-            (TxOrigin::Local, _) => Ordering::Less,
-            _ => Ordering::Greater,
-        }
-    }
-}
-
-impl TxOrigin {
-    pub fn is_local(self) -> bool {
-        self == TxOrigin::Local
-    }
-
-    pub fn is_external(self) -> bool {
-        self == TxOrigin::External
-    }
-}
 
 #[derive(Clone, Copy, Debug)]
 /// Light structure used to identify transaction and its order
