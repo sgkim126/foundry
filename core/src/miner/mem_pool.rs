@@ -165,7 +165,8 @@ impl MemPool {
     /// otherwise it might open up an attack vector.
     pub fn add(
         &mut self,
-        inputs: Vec<MemPoolInput>,
+        inputs: Vec<VerifiedTransaction>,
+        origin: TxOrigin,
         inserted_block_number: PoolingInstant,
         inserted_timestamp: u64,
     ) -> Vec<Result<TransactionImportResult, Error>> {
